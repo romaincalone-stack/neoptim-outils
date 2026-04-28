@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neoptim — Extraction Bulletins de Paie</title>
+  <meta name="description" content="Outil interne Neoptim Consulting — Extraction de bulletins de paie" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=DM+Mono&display=swap" rel="stylesheet" />
+
+  <!-- React + ReactDOM -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel Standalone (compile JSX in browser) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <!-- SheetJS (XLSX) — needed by the app -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #F7F8FA; font-family: 'Montserrat', sans-serif; }
+    #root { min-height: 100vh; }
+    #loading {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; flex-direction: column; gap: 16px;
+      font-family: 'Montserrat', sans-serif; color: #8A97A8;
+    }
+    .spinner {
+      width: 36px; height: 36px; border: 3px solid #E8ECF0;
+      border-top-color: #E86410; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span style="font-size:13px">Chargement de l'application…</span>
+  </div>
+  <div id="root" style="display:none"></div>
+
+  <script>
+    // Make React + XLSX available as module-like globals for the JSX file
+    window.React    = React;
+    window.ReactDOM = ReactDOM;
+  </script>
+
+  <script>
+    // Fetch, patch imports → load JSX via Babel
+    fetch("extraction_paie.jsx")
+      .then(r => r.text())
+      .then(src => {
+        // Remove ES module import/export syntax (not supported in browser script tags)
+        // React hooks come from window.React, XLSX from window.XLSX
+        src = src
+          // Remove import lines
+          .replace(/^import\s+.*$/gm, "")
+          // Replace "export default function App" → just render it
+          .replace(/export\s+default\s+function\s+(\w+)/, "function $1")
+          .replace(/export\s+default\s+(\w+)/, "const __AppExport__ = $1")
+          .replace(/export\s+function\s+(\w+)/, "function $1")
+          .replace(/export\s+const\s+/, "const ");
+
+        // Inject React hooks as local vars (Babel needs them in scope)
+        const hooksPreamble = `
+          const { useState, useCallback, useRef, useEffect } = React;
+          const XLSX = window.XLSX;
+        `;
+
+        // Append render call
+        const renderCall = `
+          const __container__ = document.getElementById("root");
+          const __reactRoot__ = ReactDOM.createRoot(__container__);
+          __reactRoot__.render(React.createElement(App));
+          document.getElementById("loading").style.display = "none";
+          __container__.style.display = "block";
+        `;
+
+        const fullSrc = hooksPreamble + src + renderCall;
+
+        // Compile + execute via Babel
+        const compiled = Babel.transform(fullSrc, { presets: ["react"] }).code;
+        const script = document.createElement("script");
+        script.text = compiled;
+        document.head.appendChild(script);
+      })
+      .catch(err => {
+        document.getElementById("loading").innerHTML =
+          `<div style="color:#C0392B;font-size:13px;text-align:center;padding:20px">
+            Erreur de chargement : ${err.message}<br/>
+            <small style="color:#8A97A8">Vérifiez que extraction_paie.jsx est dans le même dossier.</small>
+          </div>`;
+      });
+  </script>
+
+</body>
+</html>
